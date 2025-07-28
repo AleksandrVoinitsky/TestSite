@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ru" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Telegram Mini App Shop</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        telegram: {
+                            bg: '#18222d',
+                            block: '#1e2c3a',
+                            button: '#3e6ab1',
+                            button_hover: '#4a7bc8',
+                            text: '#e1e9f2',
+                            secondary_text: '#a8b5c1',
+                            border: '#2c3d4f',
+                            accent: '#5682a3',
+                            success: '#5cb85c',
+                            input_bg: '#2c3d4f40'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        body {
+            background-color: #0e1621;
+            color: #e1e9f2;
+        }
+        .tab-active {
+            border-bottom: 2px solid #3e6ab1;
+            color: #3e6ab1;
+            font-weight: 500;
+        }
+        .fade-enter-active, .fade-leave-active {
+            transition: opacity 0.2s ease;
+        }
+        .fade-enter-from, .fade-leave-to {
+            opacity: 0;
+        }
+        .product-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .product-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        /* Стиль для скроллбара */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e2c3a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3e6ab1;
+            border-radius: 3px;
+        }
+        /* Кастомный чекбокс */
+        .custom-checkbox {
+            position: relative;
+            padding-left: 28px;
+            cursor: pointer;
+        }
+        .custom-checkbox input {
+            position: absolute;
+            opacity: 0;
+            cursor: pointer;
+            height: 0;
+            width: 0;
+        }
+        .checkmark {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 20px;
+            width: 20px;
+            background-color: transparent;
+            border: 2px solid #3e6ab1;
+            border-radius: 4px;
+        }
+        .custom-checkbox:hover .checkmark {
+            background-color: #2c3d4f;
+        }
+        .custom-checkbox input:checked ~ .checkmark {
+            background-color: #3e6ab1;
+        }
+        .checkmark:after {
+            content: "";
+            position: absolute;
+            display: none;
+        }
+        .custom-checkbox input:checked ~ .checkmark:after {
+            display: block;
+        }
+        .custom-checkbox .checkmark:after {
+            left: 6px;
+            top: 2px;
+            width: 5px;
+            height: 10px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        .bg-red-500 {
+            background-color: #ef4444;
+        }
+        .hover\:bg-red-600:hover {
+            background-color: #dc2626;
+        }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body class="h-full" x-data="app()" x-init="init()">
+    <div class="flex flex-col h-full max-w-md mx-auto bg-telegram-bg">
+        <!-- Tabs -->
+        <div class="flex border-b border-telegram-border bg-telegram-block">
+            <button 
+                @click="activeTab = 'shop'" 
+                :class="{'tab-active': activeTab === 'shop'}" 
+                class="flex-1 py-3 text-center text-telegram-secondary_text hover:text-telegram-text transition-colors"
+            >
+                Магазин
+            </button>
+            <button 
+                @click="activeTab = 'cart'" 
+                :class="{'tab-active': activeTab === 'cart'}" 
+                class="flex-1 py-3 text-center text-telegram-secondary_text hover:text-telegram-text transition-colors relative"
+            >
+                Корзина
+                <span x-show="cart.length > 0" x-text="cart.length" class="absolute top-1.5 right-6 bg-telegram-button text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"></span>
+            </button>
+            <button 
+                @click="activeTab = 'checkout'" 
+                :class="{'tab-active': activeTab === 'checkout'}" 
+                class="flex-1 py-3 text-center text-telegram-secondary_text hover:text-telegram-text transition-colors"
+                :disabled="cart.length === 0"
+                :class="{'opacity-50 cursor-not-allowed': cart.length === 0}"
+            >
+                Оформление
+            </button>
+        </div>
+        
+        <!-- Tab Content -->
+        <div class="flex-1 overflow-y-auto" @scroll.debounce="handleScroll">
+            <!-- Shop Tab -->
+            <div x-show="activeTab === 'shop'" x-transition:enter="fade-enter-active" x-transition:leave="fade-leave-active">
+                <div class="p-3 bg-telegram-block border-b border-telegram-border sticky top-0 z-10">
+                    <div class="relative">
+                        <input 
+                            x-model="searchQuery" 
+                            @input="searchProducts()"
+                            type="text" 
+                            placeholder="Поиск товаров..." 
+                            class="w-full bg-telegram-input_bg border border-telegram-border rounded-lg py-2 px-4 pl-10 text-telegram-text focus:outline-none focus:ring-1 focus:ring-telegram-button"
+                        >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-telegram-secondary_text absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                </div>
+                
+                <div class="p-3">
+                    <template x-if="loading">
+                        <div class="text-center py-10">
+                            <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-telegram-accent mx-auto"></div>
+                            <p class="mt-4 text-telegram-secondary_text">Загрузка товаров...</p>
+                        </div>
+                    </template>
+                    
+                    <template x-if="!loading && filteredProducts.length === 0 && searchQuery">
+                        <div class="text-center py-10">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-telegram-secondary_text" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <h3 class="mt-3 text-lg font-medium text-telegram-text">Ничего не найдено</h3>
+                            <p class="mt-1 text-telegram-secondary_text">Попробуйте изменить запрос</p>
+                        </div>
+                    </template>
+                    
+                    <template x-if="!loading && filteredProducts.length === 0 && !searchQuery">
+                        <div class="text-center py-10">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-telegram-secondary_text" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <h3 class="mt-3 text-lg font-medium text-telegram-text">Товары не найдены</h3>
+                            <p class="mt-1 text-telegram-secondary_text">Попробуйте обновить страницу</p>
+                        </div>
+                    </template>
+                    
+                    <div class="grid grid-cols-2 gap-3" x-show="!loading && filteredProducts.length > 0">
+                        <template x-for="product in visibleProducts" :key="product.id">
+                            <div class="bg-telegram-block rounded-lg overflow-hidden shadow product-card border border-telegram-border">
+                                <img :src="product.image ? 'images/' + product.image : 'images/noimage.webp'" :alt="product.name" loading="lazy" class="w-full h-50 object-cover" onerror="this.src='images/noimage.webp'">
+                                <div class="p-3">
+                                    <h3 class="font-medium text-telegram-text" x-text="product.name"></h3>
+                                    <p class="text-telegram-secondary_text text-xs mb-1" x-text="product.description" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"></p>
+                                    <p class="text-telegram-accent text-sm mb-2" x-text="'₽' + product.price"></p>
+                                    
+                                    <div class="flex items-center justify-between">
+                                         <button 
+                                             @click="decrementCart(product.id)"
+                                           class="bg-telegram-button hover:bg-telegram-button_hover text-white rounded-full w-7 h-7 flex items-center justify-center transition-colors"
+                                            >
+                                              -
+                                            </button>
+                                             <input 
+                                             type="number" 
+                                              x-model="getProductCount(product.id)"
+                                               @change="updateCartQuantity(product.id, $event.target.value)"
+                                               min="0"
+                                               class="w-12 mx-2 bg-telegram-input_bg border border-telegram-border rounded text-center text-telegram-text py-1"
+                                                 >
+                                                <button 
+                                               @click="incrementCart(product.id)"
+                                                class="bg-telegram-button hover:bg-telegram-button_hover text-white rounded-full w-7 h-7 flex items-center justify-center transition-colors"
+                                             >
+                                                +
+                                              </button>
+                                        </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    
+                    <div x-show="hasMoreProducts && !loading" class="text-center py-4">
+                        <button @click="loadMoreProducts" class="text-telegram-accent hover:text-telegram-button_hover">
+                            Загрузить еще
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Cart Tab -->
+            <div x-show="activeTab === 'cart'" x-transition:enter="fade-enter-active" x-transition:leave="fade-leave-active" x-cloak>
+                <div x-show="cart.length > 0" class="p-3">
+                    <h2 class="text-lg font-medium mb-3 px-1">Ваша корзина</h2>
+                    
+                    <div class="space-y-2">
+                        <template x-for="item in cart" :key="item.id">
+                            <div class="flex items-center bg-telegram-block rounded-lg p-2 border border-telegram-border relative min-h-[80px]">
+    <button 
+        @click="removeFromCart(item.id)"
+        class="absolute top-0 right-0 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm transition-colors"
+        title="Удалить"
+    >
+        ×
+    </button>
+    
+    <img :src="'images/' + (getProductById(item.id).image || 'noimage.webp')"
+     @error="$event.target.src='images/noimage.webp'" :alt="getProductById(item.id).name" class="w-12 h-12 object-cover rounded">
+    <div class="ml-3 flex-1">
+        <h3 class="font-medium text-telegram-text" x-text="getProductById(item.id).name"></h3>
+        <p class="text-telegram-accent text-sm" x-text="'₽' + (getProductById(item.id).price * item.quantity)"></p>
+    </div>
+    
+    <div class="absolute bottom-0 right-0">
+        <input 
+            type="number" 
+            x-model="item.quantity"
+            @change="updateCartQuantity(item.id, $event.target.value)"
+            min="1"
+            class="w-16 bg-telegram-input_bg border border-telegram-border rounded text-center text-telegram-text py-1"
+        >
+    </div>
+</div>
+                        </template>
+                    </div>
+                    
+                    <div class="mt-5 pt-3 border-t border-telegram-border">
+                        <div class="flex justify-between font-medium text-lg mb-4">
+                            <span class="text-telegram-text">Итого:</span>
+                            <span class="text-telegram-accent" x-text="'₽' + totalAmount"></span>
+                        </div>
+                        <button 
+                            @click="activeTab = 'checkout'" 
+                            class="w-full bg-telegram-button hover:bg-telegram-button_hover text-white py-2.5 rounded-lg font-medium transition-colors"
+                        >
+                            Оформить заказ
+                        </button>
+                    </div>
+                </div>
+                
+                <div x-show="cart.length === 0" class="text-center py-10">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-telegram-secondary_text" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <h3 class="mt-3 text-lg font-medium text-telegram-text">Корзина пуста</h3>
+                    <p class="mt-1 text-telegram-secondary_text">Добавьте товары из магазина</p>
+                    <button 
+                        @click="activeTab = 'shop'" 
+                        class="mt-4 bg-telegram-button hover:bg-telegram-button_hover text-white py-2 px-4 rounded-lg transition-colors"
+                    >
+                        В магазин
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Checkout Tab -->
+            <div x-show="activeTab === 'checkout'" x-transition:enter="fade-enter-active" x-transition:leave="fade-leave-active" x-cloak>
+                <div x-show="cart.length > 0" class="p-3">
+                    <h2 class="text-lg font-medium mb-3 px-1">Оформление заказа</h2>
+                    
+                    <div class="bg-telegram-block p-4 rounded-lg border border-telegram-border mb-4">
+                        <h3 class="font-medium mb-2 text-telegram-text">Ваш заказ:</h3>
+                        <ul class="space-y-2 mb-4">
+                            <template x-for="item in cart" :key="item.id">
+                                <li class="flex justify-between">
+                                    <span class="text-telegram-secondary_text" x-text="getProductById(item.id).name + ' × ' + item.quantity"></span>
+                                    <span class="text-telegram-accent" x-text="'₽' + (getProductById(item.id).price * item.quantity)"></span>
+                                </li>
+                            </template>
+                        </ul>
+                        
+                        <div class="border-t border-telegram-border pt-3">
+                            <div class="flex justify-between font-medium">
+                                <span class="text-telegram-text">Итого:</span>
+                                <span class="text-telegram-accent" x-text="'₽' + totalAmount"></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Выбор даты -->
+                    <div class="bg-telegram-block p-4 rounded-lg border border-telegram-border mb-4">
+                        <h3 class="font-medium mb-3 text-telegram-text">Дата получения</h3>
+                        
+                        <div class="space-y-3">
+                            <label class="custom-checkbox flex items-center">
+                                <input type="radio" name="delivery_date" x-model="deliveryDate" value="today" class="mr-2">
+                                <span class="checkmark"></span>
+                                <span class="ml-2 text-telegram-text">Сегодня</span>
+                            </label>
+                            
+                            <label class="custom-checkbox flex items-center">
+                                <input type="radio" name="delivery_date" x-model="deliveryDate" value="tomorrow" class="mr-2">
+                                <span class="checkmark"></span>
+                                <span class="ml-2 text-telegram-text">Завтра</span>
+                            </label>
+                            
+                            <label class="custom-checkbox flex items-center">
+                                <input type="radio" name="delivery_date" x-model="deliveryDate" value="custom" class="mr-2">
+                                <span class="checkmark"></span>
+                                <span class="ml-2 text-telegram-text">Выбрать дату</span>
+                            </label>
+                            
+                            <div x-show="deliveryDate === 'custom'" class="ml-8 mt-2">
+                                <input 
+                                    type="date" 
+                                    x-model="customDate"
+                                    class="w-full bg-telegram-input_bg border border-telegram-border rounded-lg py-2 px-3 text-telegram-text focus:outline-none focus:ring-1 focus:ring-telegram-button"
+                                >
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Комментарий к заказу -->
+                    <div class="bg-telegram-block p-4 rounded-lg border border-telegram-border mb-4">
+                        <h3 class="font-medium mb-2 text-telegram-text">Комментарий к заказу</h3>
+                        <textarea 
+                            x-model="orderComment"
+                            placeholder="Ваши пожелания или примечания..." 
+                            class="w-full bg-telegram-input_bg border border-telegram-border rounded-lg py-2 px-3 text-telegram-text focus:outline-none focus:ring-1 focus:ring-telegram-button h-20"
+                        ></textarea>
+                    </div>
+                    
+                    <div class="mt-2 space-y-3">
+                        <button 
+                            @click="processOrder" 
+                            class="w-full bg-telegram-success hover:bg-opacity-90 text-white py-3 rounded-lg font-medium flex items-center justify-center transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Оформить заказ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function app() {
+            return {
+                activeTab: 'shop',
+                products: [],
+                filteredProducts: [],
+                visibleProducts: [],
+                loading: true,
+                cart: [],
+                searchQuery: '',
+                deliveryDate: 'today',
+                customDate: '',
+                orderComment: '',
+                searchVisible: true,
+                lastScrollPosition: 0,
+                productsPerPage: 20,
+                currentPage: 1,
+                
+                async init() {
+                    // Load products from JSON
+                    try {
+                        const response = await fetch('products.json');
+                        if (!response.ok) throw new Error('Failed to load products');
+                        this.products = await response.json();
+                        // Convert all image paths to webp format if they're not already
+                        this.products = this.products.map(product => {
+                            if (product.image && !product.image.endsWith('.webp')) {
+                                product.image = product.image.replace(/\.[^/.]+$/, '.webp');
+                            }
+                            return product;
+                        });
+                        this.filteredProducts = [...this.products];
+                        this.updateVisibleProducts();
+                    } catch (error) {
+                        console.error('Error loading products:', error);
+                        this.products = [];
+                        this.filteredProducts = [];
+                        this.visibleProducts = [];
+                    } finally {
+                        this.loading = false;
+                    }
+                    
+                    // Load cart from localStorage
+                    const savedCart = localStorage.getItem('cart');
+                    if (savedCart) {
+                        this.cart = JSON.parse(savedCart);
+                    }
+                    
+                    // Telegram WebApp expand
+                    if (window.Telegram && Telegram.WebApp) {
+                        Telegram.WebApp.expand();
+                    }
+                    
+                    // Set default custom date to tomorrow
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    this.customDate = tomorrow.toISOString().split('T')[0];
+                },
+                
+                get hasMoreProducts() {
+                    return this.visibleProducts.length < this.filteredProducts.length;
+                },
+                
+                updateVisibleProducts() {
+                    const startIndex = 0;
+                    const endIndex = this.currentPage * this.productsPerPage;
+                    this.visibleProducts = this.filteredProducts.slice(startIndex, endIndex);
+                },
+                
+                loadMoreProducts() {
+                    this.currentPage++;
+                    const startIndex = 0;
+                    const endIndex = this.currentPage * this.productsPerPage;
+                    const newProducts = this.filteredProducts.slice(this.visibleProducts.length, endIndex);
+                    this.visibleProducts = [...this.visibleProducts, ...newProducts];
+                },
+                
+                searchProducts() {
+    if (!this.searchQuery) {
+        this.filteredProducts = [...this.products];
+        this.currentPage = 1; // Сбрасываем на первую страницу
+        this.updateVisibleProducts();
+        return;
+    }
+    
+    const query = this.searchQuery.toLowerCase().trim();
+    this.filteredProducts = this.products.filter(product => {
+        return (
+            product.name.toLowerCase().includes(query) ||
+            product.description.toLowerCase().includes(query)
+        );
+    });
+    this.currentPage = 1; // Сбрасываем на первую страницу
+    this.updateVisibleProducts(); // Обновляем видимые товары
+},
+                
+                handleScroll(e) {
+                    const currentScrollPosition = e.target.scrollTop;
+                    
+                    // Показываем/скрываем поиск при скролле
+                    if (currentScrollPosition > this.lastScrollPosition && currentScrollPosition > 50) {
+                        this.searchVisible = false;
+                    } else {
+                        this.searchVisible = true;
+                    }
+                    
+                    this.lastScrollPosition = currentScrollPosition;
+                    
+                    // Ленивая загрузка при прокрутке вниз
+                    if (this.activeTab === 'shop' && !this.loading && this.hasMoreProducts) {
+                        const scrollHeight = e.target.scrollHeight;
+                        const scrollTop = e.target.scrollTop;
+                        const clientHeight = e.target.clientHeight;
+                        
+                        if (scrollTop + clientHeight >= scrollHeight - 200) {
+                            this.loadMoreProducts();
+                        }
+                    }
+                },
+                
+                getProductById(id) {
+                    return this.products.find(product => product.id === id) || { 
+                        id: 0, 
+                        name: 'Товар удалён', 
+                        price: 0, 
+                        image: 'images/noimage.webp',
+                        description: ''
+                    };
+                },
+                
+                getProductCount(id) {
+                    const item = this.cart.find(item => item.id === id);
+                    return item ? item.quantity : 0;
+                },
+                
+                incrementCart(id) {
+                    const item = this.cart.find(item => item.id === id);
+                    
+                    if (item) {
+                        item.quantity++;
+                    } else {
+                        this.cart.push({ id, quantity: 1 });
+                    }
+                    
+                    this.saveCart();
+                },
+                
+                decrementCart(id) {
+                    const itemIndex = this.cart.findIndex(item => item.id === id);
+                    
+                    if (itemIndex !== -1) {
+                        if (this.cart[itemIndex].quantity > 1) {
+                            this.cart[itemIndex].quantity--;
+                        } else {
+                            this.cart.splice(itemIndex, 1);
+                        }
+                        
+                        this.saveCart();
+                    }
+                },
+                
+                removeFromCart(id) {
+                    const itemIndex = this.cart.findIndex(item => item.id === id);
+                    if (itemIndex !== -1) {
+                        this.cart.splice(itemIndex, 1);
+                        this.saveCart();
+                    }
+                },
+                
+                updateCartQuantity(id, quantity) {
+                    quantity = parseInt(quantity);
+                    if (isNaN(quantity)) return;
+                    
+                    const itemIndex = this.cart.findIndex(item => item.id === id);
+                    
+                    if (quantity <= 0) {
+                        if (itemIndex !== -1) {
+                            this.cart.splice(itemIndex, 1);
+                        }
+                    } else {
+                        if (itemIndex !== -1) {
+                            this.cart[itemIndex].quantity = quantity;
+                        } else {
+                            this.cart.push({ id, quantity });
+                        }
+                    }
+                    
+                    this.saveCart();
+                },
+                
+                saveCart() {
+                    localStorage.setItem('cart', JSON.stringify(this.cart));
+                },
+                
+                get totalAmount() {
+                    return this.cart.reduce((total, item) => {
+                        const product = this.getProductById(item.id);
+                        return total + (product.price * item.quantity);
+                    }, 0);
+                },
+                
+                processOrder() {
+                    let selectedDate;
+                    switch(this.deliveryDate) {
+                        case 'today':
+                            selectedDate = 'Сегодня';
+                            break;
+                        case 'tomorrow':
+                            selectedDate = 'Завтра';
+                            break;
+                        case 'custom':
+                            selectedDate = this.customDate;
+                            break;
+                        default:
+                            selectedDate = 'Не указана';
+                    }
+                    
+                    const orderData = {
+                        delivery_date: selectedDate,
+                        amount: this.totalAmount,
+                        items: this.cart.map(item => ({
+                            id: item.id,
+                            quantity: item.quantity,
+                            name: this.getProductById(item.id).name,
+                            price: this.getProductById(item.id).price,
+                            image: this.getProductById(item.id).image
+                        })),
+                        comment: this.orderComment,
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    console.log('Order data:', orderData);
+                    
+                    // Отправка данных в бота через Telegram WebApp
+                    if (window.Telegram && Telegram.WebApp) {
+                        Telegram.WebApp.sendData(JSON.stringify(orderData));
+                        Telegram.WebApp.close();
+                    } else {
+                        console.log('Данные заказа:', orderData);
+                        alert('Заказ оформлен! Данные отправлены в бот.');
+                    }
+                    
+                    // Очищаем корзину
+                    this.cart = [];
+                    this.saveCart();
+                    this.activeTab = 'shop';
+                    this.orderComment = '';
+                    this.deliveryDate = 'today';
+                }
+            }
+        }
+    </script>
+</body>
+</html>
